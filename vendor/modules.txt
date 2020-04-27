@@ -6,9 +6,21 @@ github.com/golang/protobuf/proto
 github.com/google/go-querystring/query
 # github.com/google/uuid v1.0.0
 github.com/google/uuid
+# github.com/gorilla/mux v1.7.4
+## explicit
+github.com/gorilla/mux
+# github.com/gorilla/securecookie v1.1.1
+## explicit
+github.com/gorilla/securecookie
+# github.com/gorilla/sessions v1.2.0
+## explicit
+github.com/gorilla/sessions
 # github.com/heroku/heroku-go/v5 v5.2.0
 ## explicit
 github.com/heroku/heroku-go/v5
+# github.com/joeshaw/envdecode v0.0.0-20200121155833-099f1fc765bd
+## explicit
+github.com/joeshaw/envdecode
 # github.com/konsorten/go-windows-terminal-sequences v1.0.1
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/pborman/uuid v1.2.0

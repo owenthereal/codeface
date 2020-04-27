@@ -25,24 +25,60 @@ var (
 )
 
 func NewDeployer(accessToken string) *Deployer {
-	heroku.DefaultTransport.BearerToken = accessToken
-	svc := heroku.NewService(heroku.DefaultClient)
+	client := &http.Client{
+		Transport: &heroku.Transport{
+			BearerToken: accessToken,
+		},
+	}
 
 	return &Deployer{
-		Heroku:      svc,
-		Logger:      log.New(),
+		heroku:      heroku.NewService(client),
+		logger:      log.New(),
 		accessToken: accessToken,
 	}
 }
 
 type Deployer struct {
-	Heroku      *heroku.Service
-	Logger      log.FieldLogger
+	heroku      *heroku.Service
+	logger      log.FieldLogger
 	accessToken string
 }
 
+func (d *Deployer) DeployEditorApp(ctx context.Context, appName string) (*heroku.Build, error) {
+	logger := d.logger.WithField("app", appName)
+
+	logger.Infof("Getting account")
+	acct, err := d.account(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Infof("Getting app")
+	app, err := d.app(ctx, appName)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Infof("Creating cf app")
+	cfApp, err := d.createCFApp(ctx, d.accessToken, acct, app)
+	if err != nil {
+		return nil, err
+	}
+
+	logger = logger.WithField("cf-app", cfApp.Name)
+
+	logger.Infof("Uploading source")
+	src, err := d.uploadSource(ctx, "./template")
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Infof("Creating build")
+	return d.createBuild(ctx, cfApp, src)
+}
+
 func (d *Deployer) Deploy(ctx context.Context, appName string, buildOutput io.Writer) (string, error) {
-	logger := d.Logger
+	logger := d.logger.WithField("app", appName)
 
 	logger.Infof("Getting account")
 	acct, err := d.account(ctx)
@@ -71,7 +107,7 @@ func (d *Deployer) Deploy(ctx context.Context, appName string, buildOutput io.Wr
 	}
 
 	logger.Infof("Creating build")
-	build, err := d.createBuild(ctx, cfApp, src, buildOutput)
+	build, err := d.createBuildWithOutput(ctx, cfApp, src, buildOutput)
 	if err != nil {
 		return "", err
 	}
@@ -84,7 +120,7 @@ func (d *Deployer) Deploy(ctx context.Context, appName string, buildOutput io.Wr
 }
 
 func (d *Deployer) account(ctx context.Context) (*heroku.Account, error) {
-	acct, err := d.Heroku.AccountInfo(ctx)
+	acct, err := d.heroku.AccountInfo(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +133,7 @@ func (d *Deployer) account(ctx context.Context) (*heroku.Account, error) {
 }
 
 func (d *Deployer) app(ctx context.Context, appName string) (*heroku.App, error) {
-	app, err := d.Heroku.AppInfo(ctx, appName)
+	app, err := d.heroku.AppInfo(ctx, appName)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +146,7 @@ func (d *Deployer) app(ctx context.Context, appName string) (*heroku.App, error)
 
 func (d *Deployer) createCFApp(ctx context.Context, accessToken string, acct *heroku.Account, app *heroku.App) (*heroku.App, error) {
 	cfAppName := app.Name + "-cf-" + xid.New().String()
-	cfApp, err := d.Heroku.AppCreate(ctx, heroku.AppCreateOpts{
+	cfApp, err := d.heroku.AppCreate(ctx, heroku.AppCreateOpts{
 		Name:   &cfAppName,
 		Region: &app.Region.ID,
 		Stack:  &containerStack,
@@ -119,7 +155,7 @@ func (d *Deployer) createCFApp(ctx context.Context, accessToken string, acct *he
 		return nil, err
 	}
 
-	if _, err := d.Heroku.ConfigVarUpdate(ctx, cfApp.Name, map[string]*string{
+	if _, err := d.heroku.ConfigVarUpdate(ctx, cfApp.Name, map[string]*string{
 		"HEROKU_USER":      &acct.Email,
 		"HEROKU_USER_NAME": &acct.Email,
 		"HEROKU_API_KEY":   &accessToken,
@@ -132,7 +168,7 @@ func (d *Deployer) createCFApp(ctx context.Context, accessToken string, acct *he
 }
 
 func (d *Deployer) uploadSource(ctx context.Context, dir string) (*heroku.Source, error) {
-	src, err := d.Heroku.SourceCreate(ctx)
+	src, err := d.heroku.SourceCreate(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -164,8 +200,8 @@ func (d *Deployer) uploadSource(ctx context.Context, dir string) (*heroku.Source
 	return src, nil
 }
 
-func (d *Deployer) createBuild(ctx context.Context, cfApp *heroku.App, src *heroku.Source, buildOutput io.Writer) (*heroku.Build, error) {
-	build, err := d.Heroku.BuildCreate(ctx, cfApp.Name, heroku.BuildCreateOpts{
+func (d *Deployer) createBuild(ctx context.Context, cfApp *heroku.App, src *heroku.Source) (*heroku.Build, error) {
+	return d.heroku.BuildCreate(ctx, cfApp.Name, heroku.BuildCreateOpts{
 		SourceBlob: struct {
 			Checksum *string `json:"checksum,omitempty" url:"checksum,omitempty,key"`
 			URL      *string `json:"url,omitempty" url:"url,omitempty,key"`
@@ -175,6 +211,10 @@ func (d *Deployer) createBuild(ctx context.Context, cfApp *heroku.App, src *hero
 			// TODO: add checksum and version
 		},
 	})
+}
+
+func (d *Deployer) createBuildWithOutput(ctx context.Context, cfApp *heroku.App, src *heroku.Source, buildOutput io.Writer) (*heroku.Build, error) {
+	build, err := d.createBuild(ctx, cfApp, src)
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +232,10 @@ func (d *Deployer) createBuild(ctx context.Context, cfApp *heroku.App, src *hero
 	return build, nil
 }
 
+func (d *Deployer) BuildInfo(ctx context.Context, appName, buildID string) (*heroku.Build, error) {
+	return d.heroku.BuildInfo(ctx, appName, buildID)
+}
+
 func (d *Deployer) waitForRelease(ctx context.Context, cfApp *heroku.App, build *heroku.Build, logger log.FieldLogger) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -202,7 +246,7 @@ func (d *Deployer) waitForRelease(ctx context.Context, cfApp *heroku.App, build 
 
 		select {
 		case <-ticker.C:
-			b, err := d.Heroku.BuildInfo(ctx, cfApp.Name, build.ID)
+			b, err := d.BuildInfo(ctx, cfApp.Name, build.ID)
 			if err == nil && b.Release != nil {
 				return nil
 			}
@@ -214,7 +258,7 @@ func (d *Deployer) waitForRelease(ctx context.Context, cfApp *heroku.App, build 
 }
 
 func (d *Deployer) cfAppURL(ctx context.Context, cfApp *heroku.App) (string, error) {
-	domains, err := d.Heroku.DomainList(ctx, cfApp.Name, nil)
+	domains, err := d.heroku.DomainList(ctx, cfApp.Name, nil)
 	if err != nil {
 		return "", err
 	}
