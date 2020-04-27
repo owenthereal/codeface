@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/jingweno/codeface"
+	"github.com/pkg/browser"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -18,10 +19,11 @@ func main() {
 	}
 
 	deployer := codeface.NewDeployer(accessToken)
-	url, err := deployer.Deploy(context.Background(), app, os.Stderr)
+	url, err := deployer.DeployEditorAppAndWait(context.Background(), app, os.Stderr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("Visit %s\n", url)
+	fmt.Printf("Open your browser at %s\n", url)
+	browser.OpenURL(url)
 }

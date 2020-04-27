@@ -25,6 +25,9 @@ github.com/joeshaw/envdecode
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/pborman/uuid v1.2.0
 github.com/pborman/uuid
+# github.com/pkg/browser v0.0.0-20180916011732-0a3d74bf9ce4
+## explicit
+github.com/pkg/browser
 # github.com/rs/xid v1.2.1
 ## explicit
 github.com/rs/xid

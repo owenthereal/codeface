@@ -44,6 +44,10 @@ type Deployer struct {
 	accessToken string
 }
 
+func (d *Deployer) BuildInfo(ctx context.Context, appName, buildID string) (*heroku.Build, error) {
+	return d.heroku.BuildInfo(ctx, appName, buildID)
+}
+
 func (d *Deployer) DeployEditorApp(ctx context.Context, appName string) (*heroku.Build, error) {
 	logger := d.logger.WithField("app", appName)
 
@@ -77,46 +81,22 @@ func (d *Deployer) DeployEditorApp(ctx context.Context, appName string) (*heroku
 	return d.createBuild(ctx, cfApp, src)
 }
 
-func (d *Deployer) Deploy(ctx context.Context, appName string, buildOutput io.Writer) (string, error) {
-	logger := d.logger.WithField("app", appName)
-
-	logger.Infof("Getting account")
-	acct, err := d.account(ctx)
+func (d *Deployer) DeployEditorAppAndWait(ctx context.Context, appName string, buildOutput io.Writer) (string, error) {
+	build, err := d.DeployEditorApp(ctx, appName)
 	if err != nil {
 		return "", err
 	}
 
-	logger.Infof("Getting app")
-	app, err := d.app(ctx, appName)
-	if err != nil {
+	if err := d.streamBuildLog(ctx, build, buildOutput); err != nil {
 		return "", err
 	}
 
-	logger.Infof("Creating cf app")
-	cfApp, err := d.createCFApp(ctx, d.accessToken, acct, app)
-	if err != nil {
+	logger := d.logger.WithFields(log.Fields{"app": build.App.ID, "build": build.ID})
+	if err := d.waitForRelease(ctx, build, logger); err != nil {
 		return "", err
 	}
 
-	logger = logger.WithField("cf-app", cfApp.Name)
-
-	logger.Infof("Uploading source")
-	src, err := d.uploadSource(ctx, "./template")
-	if err != nil {
-		return "", err
-	}
-
-	logger.Infof("Creating build")
-	build, err := d.createBuildWithOutput(ctx, cfApp, src, buildOutput)
-	if err != nil {
-		return "", err
-	}
-
-	if err := d.waitForRelease(ctx, cfApp, build, logger); err != nil {
-		return "", err
-	}
-
-	return d.cfAppURL(ctx, cfApp)
+	return d.cfAppURL(ctx, build.App.ID)
 }
 
 func (d *Deployer) account(ctx context.Context) (*heroku.Account, error) {
@@ -213,40 +193,31 @@ func (d *Deployer) createBuild(ctx context.Context, cfApp *heroku.App, src *hero
 	})
 }
 
-func (d *Deployer) createBuildWithOutput(ctx context.Context, cfApp *heroku.App, src *heroku.Source, buildOutput io.Writer) (*heroku.Build, error) {
-	build, err := d.createBuild(ctx, cfApp, src)
-	if err != nil {
-		return nil, err
-	}
-
+func (d *Deployer) streamBuildLog(ctx context.Context, build *heroku.Build, buildOutput io.Writer) error {
 	resp, err := http.Get(build.OutputStreamURL)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	_, err = io.Copy(buildOutput, resp.Body)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return build, nil
+	return nil
 }
 
-func (d *Deployer) BuildInfo(ctx context.Context, appName, buildID string) (*heroku.Build, error) {
-	return d.heroku.BuildInfo(ctx, appName, buildID)
-}
-
-func (d *Deployer) waitForRelease(ctx context.Context, cfApp *heroku.App, build *heroku.Build, logger log.FieldLogger) error {
+func (d *Deployer) waitForRelease(ctx context.Context, build *heroku.Build, logger log.FieldLogger) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	logger = logger.WithField("build", build.ID)
 	for {
-		logger.Info("Waiting for build")
+		logger.Info("Waiting for release")
 
 		select {
 		case <-ticker.C:
-			b, err := d.BuildInfo(ctx, cfApp.Name, build.ID)
+			b, err := d.BuildInfo(ctx, build.App.ID, build.ID)
 			if err == nil && b.Release != nil {
 				return nil
 			}
@@ -257,14 +228,14 @@ func (d *Deployer) waitForRelease(ctx context.Context, cfApp *heroku.App, build 
 	}
 }
 
-func (d *Deployer) cfAppURL(ctx context.Context, cfApp *heroku.App) (string, error) {
-	domains, err := d.heroku.DomainList(ctx, cfApp.Name, nil)
+func (d *Deployer) cfAppURL(ctx context.Context, appID string) (string, error) {
+	domains, err := d.heroku.DomainList(ctx, appID, nil)
 	if err != nil {
 		return "", err
 	}
 
 	if len(domains) == 0 {
-		return "", fmt.Errorf("no domain is found for app %s", cfApp.Name)
+		return "", fmt.Errorf("no domain is found for app %s", appID)
 	}
 
 	u, err := url.Parse("https://" + domains[0].Hostname)
