@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"text/template"
 	"time"
 
 	"github.com/rs/xid"
@@ -72,7 +73,12 @@ func (d *Deployer) DeployEditorApp(ctx context.Context, appName string) (*heroku
 	logger = logger.WithField("cf-app", cfApp.Name)
 
 	logger.Infof("Uploading source")
-	src, err := d.uploadSource(ctx, "./template")
+	src, err := d.uploadSource(ctx, "./template", map[string]string{
+		"HEROKU_USER":      acct.Email,
+		"HEROKU_USER_NAME": acct.Email,
+		"HEROKU_API_KEY":   d.accessToken,
+		"HEROKU_APP":       app.Name,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -147,14 +153,14 @@ func (d *Deployer) createCFApp(ctx context.Context, accessToken string, acct *he
 	return cfApp, nil
 }
 
-func (d *Deployer) uploadSource(ctx context.Context, dir string) (*heroku.Source, error) {
+func (d *Deployer) uploadSource(ctx context.Context, dir string, tmplData map[string]string) (*heroku.Source, error) {
 	src, err := d.heroku.SourceCreate(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	buf := bytes.NewBuffer(nil)
-	if err := compress("./template", buf); err != nil {
+	if err := compress("./template", buf, tmplData); err != nil {
 		return nil, err
 	}
 
@@ -218,8 +224,14 @@ func (d *Deployer) waitForRelease(ctx context.Context, build *heroku.Build, logg
 		select {
 		case <-ticker.C:
 			b, err := d.BuildInfo(ctx, build.App.ID, build.ID)
-			if err == nil && b.Release != nil {
-				return nil
+			if err == nil {
+				if b.Status == "failed" {
+					return fmt.Errorf("build failed")
+				}
+
+				if b.Release != nil {
+					return nil
+				}
 			}
 
 		case <-ctx.Done():
@@ -244,28 +256,58 @@ func (d *Deployer) cfAppURL(ctx context.Context, appID string) (string, error) {
 	}
 
 	val := u.Query()
-	val.Set("folder", "/home/coder/project") // default to the project folder
+	val.Set("folder", "/home/heroku/project") // default to the project folder
 	u.RawQuery = val.Encode()
 
 	return u.String(), nil
 }
 
-func compress(src string, buf io.Writer) error {
+func compress(src string, buf io.Writer, tmplData map[string]string) error {
 	// tar > gzip > buf
 	zr := gzip.NewWriter(buf)
 	tw := tar.NewWriter(zr)
 
 	// walk through every file in the folder
-	filepath.Walk(src, func(file string, fi os.FileInfo, err error) error {
+	err := filepath.Walk(src, func(file string, fi os.FileInfo, err error) error {
+		path := filepath.ToSlash(file)
+
+		if !fi.IsDir() {
+			dir, err := ioutil.TempDir("", "tmp")
+			if err != nil {
+				return err
+			}
+			tmpf, err := os.OpenFile(filepath.Join(dir, fi.Name()), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
+			if err != nil {
+				return err
+			}
+			defer os.Remove(dir)
+
+			t := template.Must(template.New(filepath.Base(file)).ParseFiles(file))
+			if err := t.Execute(tmpf, tmplData); err != nil {
+				fmt.Println(err)
+				return err
+			}
+
+			fi, err = tmpf.Stat()
+			if err != nil {
+				return err
+			}
+
+			if err := tmpf.Close(); err != nil {
+				return err
+			}
+
+			file = tmpf.Name()
+		}
+
 		// generate tar header
 		header, err := tar.FileInfoHeader(fi, file)
 		if err != nil {
 			return err
 		}
 
-		// must provide real name
-		// (see https://golang.org/src/archive/tar/common.go?#L626)
-		header.Name = filepath.ToSlash(file)
+		// tar.FileInfoHeader only keeps base name of a file
+		header.Name = path
 
 		// write header
 		if err := tw.WriteHeader(header); err != nil {
@@ -281,10 +323,16 @@ func compress(src string, buf io.Writer) error {
 			if _, err := io.Copy(tw, data); err != nil {
 				return err
 			}
+			if err := data.Close(); err != nil {
+				return err
+			}
 		}
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 
 	// produce tar
 	if err := tw.Close(); err != nil {

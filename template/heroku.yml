@@ -1,3 +1,7 @@
 build:
+  config:
+    HEROKU_USER: {{.HEROKU_USER}}
+    HEROKU_API_KEY: {{.HEROKU_API_KEY}}
+    HEROKU_APP: {{.HEROKU_APP}}
   docker:
     web: Dockerfile
