@@ -1,0 +1,5 @@
+{
+    "go.formatTool": "goimports",
+    "go.useLanguageServer": true,
+    "terminal.integrated.shell.linux": "/bin/bash"
+}

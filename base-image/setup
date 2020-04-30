@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -o pipefail
+set -o nounset
+set -o errexit
+
+export HOME=/home/dyno
+
+mkdir -p /home/dyno/.heroku/bin
+mkdir -p /home/dyno/.heroku/lib
+mkdir -p /home/dyno/project
+
+echo "Installing Code Server..."
+mkdir $HOME/.heroku/lib/code-server && \
+  cd $HOME/.heroku/lib/code-server && \
+  curl -sL https://github.com/cdr/code-server/releases/download/3.1.1/code-server-3.1.1-linux-x86_64.tar.gz | tar -xz --strip-components=1 && \
+  ln -s $HOME/.heroku/lib/code-server/code-server $HOME/.heroku/bin/code-server
+
+code-server --install-extension /home/dyno/codeface.vsix && rm -rf /home/dyno/codeface.vsix # clean up
+code-server --install-extension ms-vscode.go 
+
+echo "Installing Go..."
+mkdir $HOME/.heroku/lib/go && \
+  cd $HOME/.heroku/lib/go && \
+  curl -sL https://dl.google.com/go/go1.14.2.linux-amd64.tar.gz | tar -xz --strip-components=1 && \
+  ln -s $HOME/.heroku/lib/go/bin/* $HOME/.heroku/bin
+
+# Install go tools to heroku home dir
+export GOPATH=$HOME/go
+
+echo "Installing Go tools..."
+goTools=(golang.org/x/tools/gopls github.com/mdempsky/gocode github.com/uudashr/gopkgs/v2/cmd/gopkgs github.com/ramya-rao-a/go-outline github.com/stamblerre/gocode github.com/rogpeppe/godef github.com/sqs/goreturns golang.org/x/lint/golint)
+for t in ${goTools[@]}; do
+  echo "go get $t"
+  go get $t
+done

@@ -242,7 +242,7 @@ func (d *Deployer) cfAppURL(ctx context.Context, appID string) (string, error) {
 	}
 
 	val := u.Query()
-	val.Set("folder", "/home/heroku/project") // default to the project folder
+	val.Set("folder", "/home/dyno/project") // default to the project folder
 	u.RawQuery = val.Encode()
 
 	return u.String(), nil

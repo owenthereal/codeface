@@ -4,7 +4,7 @@ set -o pipefail
 set -o nounset
 set -o errexit
 
-/usr/local/bin/code-server \
+code-server \
   --host 0.0.0.0 \
   --port $PORT \
   --disable-telemetry \
