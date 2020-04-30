@@ -15,7 +15,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/rs/xid"
 	log "github.com/sirupsen/logrus"
 
 	heroku "github.com/heroku/heroku-go/v5"
@@ -49,8 +48,8 @@ func (d *Deployer) BuildInfo(ctx context.Context, appName, buildID string) (*her
 	return d.heroku.BuildInfo(ctx, appName, buildID)
 }
 
-func (d *Deployer) DeployEditorApp(ctx context.Context, appName string) (*heroku.Build, error) {
-	logger := d.logger.WithField("app", appName)
+func (d *Deployer) DeployEditorApp(ctx context.Context, repo string) (*heroku.Build, error) {
+	logger := d.logger.WithField("repo", repo)
 
 	logger.Infof("Getting account")
 	acct, err := d.account(ctx)
@@ -58,14 +57,8 @@ func (d *Deployer) DeployEditorApp(ctx context.Context, appName string) (*heroku
 		return nil, err
 	}
 
-	logger.Infof("Getting app")
-	app, err := d.app(ctx, appName)
-	if err != nil {
-		return nil, err
-	}
-
 	logger.Infof("Creating cf app")
-	cfApp, err := d.createCFApp(ctx, d.accessToken, acct, app)
+	cfApp, err := d.createCFApp(ctx, d.accessToken, acct, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -73,12 +66,7 @@ func (d *Deployer) DeployEditorApp(ctx context.Context, appName string) (*heroku
 	logger = logger.WithField("cf-app", cfApp.Name)
 
 	logger.Infof("Uploading source")
-	src, err := d.uploadSource(ctx, "./template", map[string]string{
-		"HEROKU_USER":      acct.Email,
-		"HEROKU_USER_NAME": acct.Email,
-		"HEROKU_API_KEY":   d.accessToken,
-		"HEROKU_APP":       app.Name,
-	})
+	src, err := d.uploadSource(ctx, "./template", map[string]string{})
 	if err != nil {
 		return nil, err
 	}
@@ -87,8 +75,8 @@ func (d *Deployer) DeployEditorApp(ctx context.Context, appName string) (*heroku
 	return d.createBuild(ctx, cfApp, src)
 }
 
-func (d *Deployer) DeployEditorAppAndWait(ctx context.Context, appName string, buildOutput io.Writer) (string, error) {
-	build, err := d.DeployEditorApp(ctx, appName)
+func (d *Deployer) DeployEditorAppAndWait(ctx context.Context, repo string, buildOutput io.Writer) (string, error) {
+	build, err := d.DeployEditorApp(ctx, repo)
 	if err != nil {
 		return "", err
 	}
@@ -130,11 +118,12 @@ func (d *Deployer) app(ctx context.Context, appName string) (*heroku.App, error)
 	return app, nil
 }
 
-func (d *Deployer) createCFApp(ctx context.Context, accessToken string, acct *heroku.Account, app *heroku.App) (*heroku.App, error) {
-	cfAppName := app.Name + "-cf-" + xid.New().String()
+func (d *Deployer) createCFApp(ctx context.Context, accessToken string, acct *heroku.Account, repo string) (*heroku.App, error) {
+	//cfAppName := app.Name + "-cf-" + xid.New().String()
+	region := "us"
 	cfApp, err := d.heroku.AppCreate(ctx, heroku.AppCreateOpts{
-		Name:   &cfAppName,
-		Region: &app.Region.ID,
+		//Name:   &cfAppName,
+		Region: &region,
 		Stack:  &containerStack,
 	})
 	if err != nil {
@@ -142,10 +131,7 @@ func (d *Deployer) createCFApp(ctx context.Context, accessToken string, acct *he
 	}
 
 	if _, err := d.heroku.ConfigVarUpdate(ctx, cfApp.Name, map[string]*string{
-		"HEROKU_USER":      &acct.Email,
-		"HEROKU_USER_NAME": &acct.Email,
-		"HEROKU_API_KEY":   &accessToken,
-		"HEROKU_APP":       &app.Name,
+		"GIT_REPO": &repo,
 	}); err != nil {
 		return nil, err
 	}
