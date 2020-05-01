@@ -119,10 +119,8 @@ func (d *Deployer) app(ctx context.Context, appName string) (*heroku.App, error)
 }
 
 func (d *Deployer) createCFApp(ctx context.Context, accessToken string, acct *heroku.Account, repo string) (*heroku.App, error) {
-	//cfAppName := app.Name + "-cf-" + xid.New().String()
 	region := "us"
 	cfApp, err := d.heroku.AppCreate(ctx, heroku.AppCreateOpts{
-		//Name:   &cfAppName,
 		Region: &region,
 		Stack:  &containerStack,
 	})
