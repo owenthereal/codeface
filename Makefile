@@ -1,7 +1,8 @@
 .PHONY: build
 build:
-	go build -o bin/cf-client ./cmd/cf-client
-	go build -o bin/cf-server ./cmd/cf-server
+	GOOS=js GOARCH=wasm go build -o web/assets/main.wasm ./web/...
+	go-bindata -o server/bindata.go -pkg server -fs -prefix "web/assets" ./web/assets
+	go build -o bin/cf ./cmd/cf
 
 .PHONY: base-image
 base-image: vscode-ext

@@ -1,6 +1,7 @@
 .env
-cf-client
-cf-server
+bin/cf
 vscode-ext/node_modules
 vscode-ext/out
 *.vsix
+main.wasm
+bindata.go
