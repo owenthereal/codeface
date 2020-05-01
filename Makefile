@@ -9,4 +9,4 @@ base-image: vscode-ext
 
 .PHONY: vscode-ext
 vscode-ext:
-	cd ./vscode && vsce package -o ../base-image/extensions
+	cd ./vscode-ext && vsce package -o ../base-image/extensions

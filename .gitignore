@@ -1,6 +1,6 @@
 .env
 cf-client
 cf-server
-vscode/node_modules
-vscode/out
+vscode-ext/node_modules
+vscode-ext/out
 *.vsix
