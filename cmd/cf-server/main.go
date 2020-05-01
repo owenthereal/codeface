@@ -58,7 +58,7 @@ func main() {
 	r.Use(h.AuthMiddleware)
 
 	r.Methods("GET").Path("/").HandlerFunc(h.HandleHome)
-	r.Methods("POST").Path("/apps/{app}/actions/edit").HandlerFunc(h.HandleEdit)
+	r.Methods("POST").Path("/editor").HandlerFunc(h.HandleEditor)
 	r.Methods("GET").Path("/apps/{app}/builds/{build}").HandlerFunc(h.HandleBuildInfo)
 	r.Methods("GET").Path("/login").HandlerFunc(h.HandleLogin)
 	r.Methods("GET").Path("/callback").HandlerFunc(h.HandleCallback)
@@ -79,12 +79,21 @@ func (h *handlers) HandleHome(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(tok)
 }
 
-func (h *handlers) HandleEdit(w http.ResponseWriter, r *http.Request) {
+func (h *handlers) HandleEditor(w http.ResponseWriter, r *http.Request) {
 	tok := r.Context().Value(tokenKey).(*oauth2.Token)
-	vars := mux.Vars(r)
+
+	repo := struct {
+		Repo string
+	}{}
+
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&repo); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
 
 	d := codeface.NewDeployer(tok.AccessToken)
-	build, err := d.DeployEditorApp(r.Context(), vars["app"])
+	build, err := d.DeployEditorApp(r.Context(), repo.Repo)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
