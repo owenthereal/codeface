@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+set -o pipefail
+set -o nounset
+set -o errexit
+
+code-server \
+  --host 0.0.0.0 \
+  --port $PORT \
+  --disable-telemetry \
+  --disable-updates \
+  --disable-ssh \
+  --auth none \
+  .

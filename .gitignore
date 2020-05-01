@@ -1,2 +1,6 @@
 .env
-bin
+cf-client
+cf-server
+vscode/node_modules
+vscode/out
+*.vsix
