@@ -6,3 +6,7 @@ build:
 .PHONY: base-image
 base-image:
 	cd ./base-image && docker build -t jingweno/heroku-editor:20 . && docker push jingweno/heroku-editor:20
+
+.PHONY: vscode-ext
+vscode-ext:
+	cd ./vscode && vsce package -o ../base-image/extensions
