@@ -1,4 +1,4 @@
-FROM heroku/heroku:20
+FROM heroku/heroku:20-build
 
 RUN useradd -m -s /usr/bin/bash dyno
 USER dyno
