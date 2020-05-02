@@ -1,2 +1,2 @@
-web: bin/cf server
-worker: bin/cf worker
+web: cf server
+worker: cf worker

@@ -5,3 +5,4 @@ vscode-ext/out
 *.vsix
 main.wasm
 bindata.go
+wasm_exec.js

@@ -16,6 +16,7 @@ func deployCmd() *cobra.Command {
 	}
 
 	cmd.PersistentFlags().StringVarP(&herokuAPIToken, "token", "t", "", "Heroku API token (required)")
+	cmd.PersistentFlags().StringVarP(&templateDir, "template", "", "./template", "deployment template directory")
 
 	return cmd
 }
@@ -25,7 +26,7 @@ func deployRunE(c *cobra.Command, args []string) error {
 		return fmt.Errorf("missing required flags")
 	}
 
-	d := editor.NewDeployer(herokuAPIToken)
+	d := editor.NewDeployer(herokuAPIToken, templateDir)
 	app, err := d.DeployEditorAndScaleDown(context.Background())
 	if err != nil {
 		return err

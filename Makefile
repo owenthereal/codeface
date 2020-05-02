@@ -1,8 +1,14 @@
-.PHONY: build
-build:
+.PHONY: install
+install:
+	cp "$$(go env GOROOT)/misc/wasm/wasm_exec.js" web/assets
 	GOOS=js GOARCH=wasm go build -o web/assets/main.wasm ./web/...
 	go-bindata -o server/bindata.go -pkg server -fs -prefix "web/assets" ./web/assets
-	go build -o bin/cf ./cmd/cf
+	go install ./cmd/cf
+
+.PHONY: docker
+docker:
+	docker build -t jingweno/codeface/web .
+	docker build -t jingweno/codeface/worker -f Dockerfile.worker .
 
 .PHONY: base-image
 base-image: vscode-ext

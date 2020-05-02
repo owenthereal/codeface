@@ -2,7 +2,9 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	heroku "github.com/heroku/heroku-go/v5"
@@ -16,6 +18,7 @@ type Config struct {
 	BatchSize     int           `env:"BATCH_SIZE,default=2"`
 	PoolSize      int           `env:"POOL_SIZE,default=5"`
 	CheckInterval time.Duration `env:"CHECK_INTERVAL,default=1m"`
+	TemplateDir   string
 }
 
 func New(cfg Config) *Worker {
@@ -40,6 +43,10 @@ type Worker struct {
 
 func (w *Worker) Start(ctx context.Context) error {
 	w.logger.Info("Starting worker")
+
+	if _, err := os.Stat(w.cfg.TemplateDir); os.IsNotExist(err) {
+		return fmt.Errorf("template directory %s does not exist", w.cfg.TemplateDir)
+	}
 
 	work := func() {
 		if err := w.addAppsToPool(ctx); err != nil {
@@ -78,7 +85,7 @@ func (w *Worker) addAppsToPool(cctx context.Context) error {
 	var g run.Group
 	for i := 0; i < n; i++ {
 		g.Add(func() error {
-			d := editor.NewDeployer(w.cfg.HerokuAPIKey)
+			d := editor.NewDeployer(w.cfg.HerokuAPIKey, w.cfg.TemplateDir)
 			_, err := d.DeployEditorAndScaleDown(ctx)
 			return err
 		}, func(err error) {

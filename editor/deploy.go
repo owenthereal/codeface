@@ -27,7 +27,7 @@ var (
 	version        = "0.0.1" // TODO load from env var
 )
 
-func NewDeployer(accessToken string) *Deployer {
+func NewDeployer(accessToken, templateDir string) *Deployer {
 	client := &http.Client{
 		Transport: &heroku.Transport{
 			BearerToken: accessToken,
@@ -35,14 +35,16 @@ func NewDeployer(accessToken string) *Deployer {
 	}
 
 	return &Deployer{
-		heroku: heroku.NewService(client),
-		logger: log.New().WithField("com", "deployer"),
+		templateDir: templateDir,
+		heroku:      heroku.NewService(client),
+		logger:      log.New().WithField("com", "deployer"),
 	}
 }
 
 type Deployer struct {
-	heroku *heroku.Service
-	logger log.FieldLogger
+	templateDir string
+	heroku      *heroku.Service
+	logger      log.FieldLogger
 }
 
 func (d *Deployer) BuildInfo(ctx context.Context, appName, buildID string) (*heroku.Build, error) {
@@ -62,17 +64,21 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 		return nil, err
 	}
 
+	defer func() {
+		if r := recover(); r != nil {
+			if cfApp != nil {
+				d.deleteFailedApp(cfApp)
+			}
+
+			// re-panic
+			panic(r)
+		}
+	}()
+
 	// make sure failed app is cleaned up if there is any error
 	defer func() {
 		if err != nil && cfApp != nil {
-			logger := d.logger.WithField("app", cfApp.Name)
-
-			logger.Info("Removing failed app")
-			// use a new ctx to make sure it's detached
-			_, err := d.heroku.AppDelete(context.Background(), cfApp.Name)
-			if err != nil {
-				logger.WithError(err).Info("Fail to remove failed app")
-			}
+			d.deleteFailedApp(cfApp)
 		}
 	}()
 
@@ -81,11 +87,22 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 	return cfApp, err
 }
 
+func (d *Deployer) deleteFailedApp(app *heroku.App) {
+	logger := d.logger.WithField("app", app.Name)
+
+	logger.Info("Removing failed app")
+	// use a new ctx to make sure it's detached
+	_, err := d.heroku.AppDelete(context.Background(), app.Name)
+	if err != nil {
+		logger.WithError(err).Info("Fail to remove failed app")
+	}
+}
+
 func (d *Deployer) buildAndScaleDown(ctx context.Context, cfApp *heroku.App) error {
 	logger := d.logger.WithField("app", cfApp.Name)
 
 	logger.Infof("Uploading source")
-	src, err := d.uploadSource(ctx, "./template", map[string]string{})
+	src, err := d.uploadSource(ctx, d.templateDir, map[string]string{})
 	if err != nil {
 		return err
 	}
