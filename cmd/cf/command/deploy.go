@@ -1,0 +1,37 @@
+package command
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/jingweno/codeface/editor"
+	"github.com/spf13/cobra"
+)
+
+func deployCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "deploy",
+		Short: "Deploy a Codeface editor to Heroku",
+		RunE:  deployRunE,
+	}
+
+	cmd.PersistentFlags().StringVarP(&herokuAPIToken, "token", "t", "", "Heroku API token (required)")
+
+	return cmd
+}
+
+func deployRunE(c *cobra.Command, args []string) error {
+	if herokuAPIToken == "" {
+		return fmt.Errorf("missing required flags")
+	}
+
+	d := editor.NewDeployer(herokuAPIToken)
+	app, err := d.DeployEditorAndScaleDown(context.Background())
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Deployed Codeface app: %s\n", app.Name)
+
+	return nil
+}
