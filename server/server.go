@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
@@ -109,15 +107,8 @@ func (h *handlers) HandleEditor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := url.Parse(opt.GitRepo)
-	if err != nil {
+	if err := opt.Validate(); err != nil {
 		jsonResp(w, http.StatusUnprocessableEntity, model.ErrorResponse{err.Error()})
-		return
-	}
-
-	if u.Scheme != "https" && u.Host != "github.com" && len(strings.Split(u.Path, "/")) != 2 {
-		jsonResp(w, http.StatusUnprocessableEntity, model.ErrorResponse{fmt.Sprintf("malformed GitHub URL: %s", u)})
-		return
 	}
 
 	c := editor.NewClaimer(h.herokuAPIKey)
