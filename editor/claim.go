@@ -40,7 +40,7 @@ func (t *Claimer) Claim(ctx context.Context, appIdentity, recipient, gitRepo str
 
 	if appIdentity == "" {
 		logger.Info("Taking one app from the pool")
-		app, err = t.findOneCFApp(ctx)
+		app, err = t.findOneIdledApp(ctx)
 		if err != nil {
 			return app, err
 		}
@@ -52,54 +52,78 @@ func (t *Claimer) Claim(ctx context.Context, appIdentity, recipient, gitRepo str
 		}
 	}
 
-	logger.WithField("app", app.Name).Infof("Updating idle app name")
-	app, err = t.updateIdleAppName(ctx, app)
+	defer func() {
+		if r := recover(); r != nil {
+			if app != nil {
+				deleteFailedApp(t.heroku, app, t.logger)
+			}
+
+			// re-panic
+			panic(r)
+		}
+	}()
+
+	// make sure failed app is cleaned up if there is any error
+	defer func() {
+		if err != nil && app != nil {
+			deleteFailedApp(t.heroku, app, t.logger)
+		}
+	}()
+
+	logger.WithField("app", app.Name).Infof("Marking app as claimed")
+	app, err = t.markAppAsClaimed(ctx, app)
 	if err != nil {
 		return app, err
 	}
 
-	logger = logger.WithField("app", app.Name)
+	err = t.transferOwnership(ctx, app, recipient, gitRepo)
+
+	return app, err
+}
+
+func (t *Claimer) transferOwnership(ctx context.Context, app *heroku.App, recipient, gitRepo string) error {
+	logger := t.logger.WithField("app", app.Name)
 
 	logger.Infof("Adding Git repo")
 	if err := t.addGitRepo(ctx, app.Name, gitRepo); err != nil {
-		return app, err
+		return err
 	}
 
 	logger.Infof("Scaling up app")
 	if err := t.scaleUpApp(ctx, app.Name); err != nil {
-		return app, err
+		return err
 	}
 
 	// the app is already owned by the recipient
 	if app.Owner.Email == recipient || app.Owner.ID == recipient {
-		return app, nil
+		return nil
 	}
 
 	logger.Infof("Adding collaborator")
 	if err := t.addCollaborator(ctx, app.Name, recipient); err != nil {
 		if !strings.Contains(err.Error(), "User is already a collaborator on app") {
-			return app, err
+			return err
 		}
 	}
 
 	logger.Infof("Transferring app")
 	tr, err := t.transferApp(ctx, app.Name, recipient)
 	if err != nil {
-		return app, err
+		return err
 	}
 
 	logger = logger.WithField("transfer", tr.ID)
 	logger.Infof("Accepting transfer")
 	if err := t.acceptTransfer(ctx, tr.ID); err != nil {
-		return app, err
+		return err
 	}
 
 	logger.Infof("Removing owner")
-	return app, t.removeOwner(ctx, app.Name, tr.Owner.ID)
+	return t.removeOwner(ctx, app.Name, tr.Owner.ID)
 }
 
-func (t *Claimer) findOneCFApp(ctx context.Context) (*heroku.App, error) {
-	apps, err := AllCFApps(ctx, t.heroku)
+func (t *Claimer) findOneIdledApp(ctx context.Context) (*heroku.App, error) {
+	apps, err := AllIdledApps(ctx, t.heroku)
 	if err != nil {
 		return nil, err
 	}
@@ -115,13 +139,19 @@ func (t *Claimer) app(ctx context.Context, appIdentity string) (*heroku.App, err
 	return t.heroku.AppInfo(ctx, appIdentity)
 }
 
-func (t *Claimer) updateIdleAppName(ctx context.Context, app *heroku.App) (*heroku.App, error) {
+func (t *Claimer) markAppAsClaimed(ctx context.Context, app *heroku.App) (*heroku.App, error) {
 	if cfIdleAppRegexp.MatchString(app.Name) {
 		cfID := cfIdleAppRegexp.FindStringSubmatch(app.Name)
-		newIdentity := "cf-" + cfID[1]
-		return t.heroku.AppUpdate(ctx, app.Name, heroku.AppUpdateOpts{
+		newIdentity := buildClaimedAppName(cfID[1])
+		newApp, err := t.heroku.AppUpdate(ctx, app.Name, heroku.AppUpdateOpts{
 			Name: &newIdentity,
 		})
+
+		if newApp == nil {
+			newApp = app
+		}
+
+		return newApp, err
 	}
 
 	return app, nil

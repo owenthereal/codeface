@@ -69,7 +69,7 @@ func (w *Worker) Start(ctx context.Context) error {
 }
 
 func (w *Worker) addAppsToPool(cctx context.Context) error {
-	apps, err := editor.AllCFApps(cctx, w.heroku)
+	apps, err := editor.AllIdledApps(cctx, w.heroku)
 	if err != nil {
 		return err
 	}

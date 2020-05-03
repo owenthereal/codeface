@@ -12,13 +12,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"text/template"
 	"time"
 
 	heroku "github.com/heroku/heroku-go/v5"
-	"github.com/rs/xid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -47,7 +44,7 @@ type Deployer struct {
 	logger      log.FieldLogger
 }
 
-func (d *Deployer) BuildInfo(ctx context.Context, appName, buildID string) (*heroku.Build, error) {
+func (d *Deployer) buildInfo(ctx context.Context, appName, buildID string) (*heroku.Build, error) {
 	return d.heroku.BuildInfo(ctx, appName, buildID)
 }
 
@@ -67,7 +64,7 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 	defer func() {
 		if r := recover(); r != nil {
 			if cfApp != nil {
-				d.deleteFailedApp(cfApp)
+				deleteFailedApp(d.heroku, cfApp, d.logger)
 			}
 
 			// re-panic
@@ -78,24 +75,37 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 	// make sure failed app is cleaned up if there is any error
 	defer func() {
 		if err != nil && cfApp != nil {
-			d.deleteFailedApp(cfApp)
+			deleteFailedApp(d.heroku, cfApp, d.logger)
 		}
 	}()
 
 	err = d.buildAndScaleDown(ctx, cfApp)
+	if err != nil {
+		return cfApp, err
+	}
+
+	d.logger.Infof("Marking app as idled")
+	cfApp, err = d.markAppAsIdled(ctx, cfApp)
 
 	return cfApp, err
 }
 
-func (d *Deployer) deleteFailedApp(app *heroku.App) {
-	logger := d.logger.WithField("app", app.Name)
+func (d *Deployer) markAppAsIdled(ctx context.Context, app *heroku.App) (*heroku.App, error) {
+	if cfBuildingAppRegexp.MatchString(app.Name) {
+		cfID := cfBuildingAppRegexp.FindStringSubmatch(app.Name)
+		newIdentity := buildIdleAppName(cfID[1])
+		newApp, err := d.heroku.AppUpdate(ctx, app.Name, heroku.AppUpdateOpts{
+			Name: &newIdentity,
+		})
 
-	logger.Info("Removing failed app")
-	// use a new ctx to make sure it's detached
-	_, err := d.heroku.AppDelete(context.Background(), app.Name)
-	if err != nil {
-		logger.WithError(err).Info("Fail to remove failed app")
+		if newApp == nil {
+			newApp = app
+		}
+
+		return newApp, err
 	}
+
+	return app, nil
 }
 
 func (d *Deployer) buildAndScaleDown(ctx context.Context, cfApp *heroku.App) error {
@@ -150,7 +160,7 @@ func (d *Deployer) app(ctx context.Context, appName string) (*heroku.App, error)
 
 func (d *Deployer) createCFApp(ctx context.Context, acct *heroku.Account) (*heroku.App, error) {
 	region := "us"
-	name := cfIdleAppName()
+	name := genBuildingAppName()
 	cfApp, err := d.heroku.AppCreate(ctx, heroku.AppCreateOpts{
 		Name:   &name,
 		Region: &region,
@@ -243,7 +253,7 @@ func (d *Deployer) waitForRelease(ctx context.Context, build *heroku.Build, logg
 	for {
 		select {
 		case <-ticker.C:
-			build, err = d.BuildInfo(ctx, build.App.ID, build.ID)
+			build, err = d.buildInfo(ctx, build.App.ID, build.ID)
 			if err == nil {
 				logger.WithField("build-status", build.Status).Info("Waiting for release")
 
@@ -365,50 +375,4 @@ func compress(src string, buf io.Writer, tmplData map[string]string) error {
 	}
 
 	return nil
-}
-
-var (
-	// cf idle app name is in the format of cf-ID-VERSION
-	cfIdleAppRegexp = regexp.MustCompile(fmt.Sprintf("cf-(.+)-%s", dashizedVersion()))
-)
-
-func cfIdleAppName() string {
-	return "cf-" + xid.New().String() + "-" + dashizedVersion()
-}
-
-func dashizedVersion() string {
-	return strings.ReplaceAll(version, ".", "")
-}
-
-func AllCFApps(ctx context.Context, client *heroku.Service) ([]heroku.App, error) {
-	var result []heroku.App
-
-	apps, err := client.AppListOwnedAndCollaborated(ctx, "~", &heroku.ListRange{
-		Field: "name",
-		Max:   1000, // FIXME: hardcode
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, app := range apps {
-		if cfIdleAppRegexp.MatchString(app.Name) {
-			result = append(result, app)
-		}
-	}
-
-	return result, nil
-}
-
-func Account(ctx context.Context, client *heroku.Service) (*heroku.Account, error) {
-	acct, err := client.AccountInfo(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if acct.Email == "" {
-		return nil, fmt.Errorf("error: fail to get account email")
-	}
-
-	return acct, nil
 }
