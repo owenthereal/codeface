@@ -16,11 +16,21 @@ import (
 	"github.com/jingweno/codeface/model"
 )
 
+const (
+	bookmarkletTmpl = `javascript:(function(){window.location.href='%s?repo=' + window.location.href})();`
+)
+
 func main() {
+	u, err := currentURL()
+	if err != nil {
+		panic(err) // impossible
+	}
+
 	vecty.SetTitle("Codeface")
 	vecty.AddStylesheet("/assets/style.css")
 	pv := &PageView{
-		GitHubRepoURL: gitHubRepoFromURL(),
+		GitHubRepoURL: u.Query().Get("repo"),
+		Bookmarklet:   fmt.Sprintf(bookmarkletTmpl, u.Scheme+"://"+u.Host),
 	}
 	// if repo exists from url param ?repo=...
 	if pv.GitHubRepoURL != "" {
@@ -33,6 +43,7 @@ func main() {
 type PageView struct {
 	vecty.Core
 	GitHubRepoURL   string
+	Bookmarklet     string
 	ValidFeedback   string
 	InvalidFeedback string
 	IsWorking       bool
@@ -128,7 +139,6 @@ func (p *PageView) Render() vecty.ComponentOrHTML {
 				elem.Button(
 					vecty.Markup(
 						vecty.Class("btn"),
-						//vecty.Class("btn-lg"),
 						vecty.Class("btn-primary"),
 						vecty.Class("btn-block"),
 						prop.Type(prop.TypeSubmit),
@@ -144,6 +154,29 @@ func (p *PageView) Render() vecty.ComponentOrHTML {
 						),
 					),
 					vecty.Text("\nRun\n"),
+				),
+
+				elem.Paragraph(
+					vecty.Markup(
+						vecty.Class("mt-3"),
+						vecty.Class("mb-3"),
+						vecty.Class("text-muted"),
+						vecty.Class("text-center"),
+					),
+					vecty.Text("Drag the following bookmarklet to your bookmark bar, and press it to clone the Git repository to Codeface while you are navigating on github.com"),
+				),
+				elem.Paragraph(
+					vecty.Markup(
+						vecty.Class("mt-3"),
+						vecty.Class("mb-3"),
+						vecty.Class("text-center"),
+					),
+					elem.Anchor(
+						vecty.Markup(
+							prop.Href(p.Bookmarklet),
+						),
+						vecty.Text("Clone to Codeface"),
+					),
 				),
 			),
 		),
@@ -235,12 +268,7 @@ func redirectTo(url string) {
 	loc.Set("href", url)
 }
 
-func gitHubRepoFromURL() string {
+func currentURL() (*url.URL, error) {
 	loc := js.Global().Get("window").Get("location")
-	u, err := url.ParseRequestURI(loc.Get("href").String())
-	if err != nil {
-		return ""
-	}
-
-	return u.Query().Get("repo")
+	return url.ParseRequestURI(loc.Get("href").String())
 }
