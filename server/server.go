@@ -18,6 +18,7 @@ import (
 	hkclient "github.com/heroku/heroku-go/v5"
 	"github.com/jingweno/codeface/editor"
 	"github.com/jingweno/codeface/model"
+	"github.com/shurcooL/httpgzip"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -73,7 +74,10 @@ func (s *Server) Serve() error {
 	r.Use(mux.CORSMethodMiddleware(r))
 	r.Use(h.AuthMiddleware)
 
-	r.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", http.FileServer(AssetFile())))
+	r.PathPrefix("/assets/").Handler(http.StripPrefix("/assets/", httpgzip.FileServer(
+		AssetFile(),
+		httpgzip.FileServerOptions{},
+	)))
 	r.Path("/").Handler(http.FileServer(AssetFile())) // for index.html
 
 	r.Methods("POST").Path("/editor").HandlerFunc(h.HandleEditor)
