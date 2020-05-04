@@ -107,12 +107,15 @@ func (h *handlers) HandleEditor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := opt.Validate(); err != nil {
+	fmt.Println(opt.GitRepo)
+	url, err := model.ParseGitHubRepoURL(opt.GitRepo)
+	if err != nil {
 		jsonResp(w, http.StatusUnprocessableEntity, model.ErrorResponse{err.Error()})
+		return
 	}
 
 	c := editor.NewClaimer(h.herokuAPIKey)
-	app, err := c.Claim(r.Context(), "", acct.Email, opt.GitRepo)
+	app, err := c.Claim(r.Context(), "", acct.Email, url)
 	if err != nil {
 		h.logger.WithError(err).Info("error: fail to claim an app")
 		jsonResp(w, http.StatusUnprocessableEntity, model.ErrorResponse{err.Error()})

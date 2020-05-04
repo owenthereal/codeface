@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"syscall/js"
 	"time"
 
@@ -18,7 +19,15 @@ import (
 func main() {
 	vecty.SetTitle("Codeface")
 	vecty.AddStylesheet("/assets/style.css")
-	vecty.RenderBody(&PageView{})
+	pv := &PageView{
+		GitHubRepoURL: gitHubRepoFromURL(),
+	}
+	// if repo exists from url param ?repo=...
+	if pv.GitHubRepoURL != "" {
+		go pv.claimEditor(pv.GitHubRepoURL)
+	}
+
+	vecty.RenderBody(pv)
 }
 
 type PageView struct {
@@ -156,35 +165,39 @@ func (p *PageView) resetFields() {
 }
 
 func (p *PageView) onEnter(event *vecty.Event) {
-	go func(repo string) {
-		url, err := p.claimEditor(repo)
-		if err == nil {
-			p.ValidFeedback = fmt.Sprintf("Please wait, redirecting to %s", url)
-			p.IsWorking = true
-			vecty.Rerender(p)
-			redirectTo(url)
-		} else {
-			p.InvalidFeedback = err.Error()
-			p.IsWorking = false
-			vecty.Rerender(p)
-			// FIXME: hack, Rerender appears to be async
-			time.Sleep(200 * time.Millisecond)
-			p.input.Node().Call("focus")
-		}
-	}(p.GitHubRepoURL)
-
 	p.resetFields()
-	p.IsWorking = true // mark as working
 	vecty.Rerender(p)
+	go p.claimEditor(p.GitHubRepoURL)
 }
 
-func (p *PageView) claimEditor(repo string) (string, error) {
-	req := model.EditorRequest{
-		GitRepo: repo,
+func (p *PageView) claimEditor(repo string) {
+	p.IsWorking = true // mark as working
+	vecty.Rerender(p)
+
+	url, err := claimEditor(repo)
+	if err == nil {
+		p.ValidFeedback = fmt.Sprintf("Please wait, redirecting to %s", url)
+		p.IsWorking = true
+		vecty.Rerender(p)
+		redirectTo(url)
+	} else {
+		p.InvalidFeedback = err.Error()
+		p.IsWorking = false
+		vecty.Rerender(p)
+		// FIXME: hack, Rerender appears to be async
+		time.Sleep(200 * time.Millisecond)
+		p.input.Node().Call("focus")
+	}
+}
+
+func claimEditor(url string) (string, error) {
+	u, err := model.ParseGitHubRepoURL(url)
+	if err != nil {
+		return "", err
 	}
 
-	if err := req.Validate(); err != nil {
-		return "", err
+	req := model.EditorRequest{
+		GitRepo: u,
 	}
 
 	b, err := json.Marshal(req)
@@ -220,4 +233,14 @@ func (p *PageView) claimEditor(repo string) (string, error) {
 func redirectTo(url string) {
 	loc := js.Global().Get("window").Get("location")
 	loc.Set("href", url)
+}
+
+func gitHubRepoFromURL() string {
+	loc := js.Global().Get("window").Get("location")
+	u, err := url.ParseRequestURI(loc.Get("href").String())
+	if err != nil {
+		return ""
+	}
+
+	return u.Query().Get("repo")
 }
