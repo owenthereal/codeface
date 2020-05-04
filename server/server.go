@@ -63,7 +63,7 @@ func (s *Server) Serve() error {
 		oauthConf: &oauth2.Config{
 			ClientID:     s.cfg.HerokuClientID,
 			ClientSecret: s.cfg.HerokuClientSecret,
-			Scopes:       []string{"global"},
+			Scopes:       []string{"identity"},
 			Endpoint:     heroku.Endpoint,
 		},
 		logger: s.logger,
