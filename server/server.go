@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
@@ -32,10 +33,11 @@ func init() {
 }
 
 type Config struct {
-	Port               string `env:"PORT,required"`
-	HerokuAPIKey       string `env:"HEROKU_API_KEY,required"`
-	HerokuClientID     string `env:"HEROKU_CLIENT_ID,required"`
-	HerokuClientSecret string `env:"HEROKU_CLIENT_SECRET,required"`
+	Port               string   `env:"PORT,required"`
+	HerokuAPIKey       string   `env:"HEROKU_API_KEY,required"`
+	HerokuClientID     string   `env:"HEROKU_CLIENT_ID,required"`
+	HerokuClientSecret string   `env:"HEROKU_CLIENT_SECRET,required"`
+	WhitelistUsers     []string `env:"WHITELIST_USERS"`
 	// cat /dev/urandom | base64 | head -c 64
 	SessionKey string `env:"SESSION_KEY,required"`
 }
@@ -54,8 +56,9 @@ type Server struct {
 
 func (s *Server) Serve() error {
 	h := handlers{
-		herokuAPIKey: s.cfg.HerokuAPIKey,
-		store:        sessions.NewCookieStore([]byte(s.cfg.SessionKey)),
+		herokuAPIKey:   s.cfg.HerokuAPIKey,
+		whitelistUsers: s.cfg.WhitelistUsers,
+		store:          sessions.NewCookieStore([]byte(s.cfg.SessionKey)),
 		oauthConf: &oauth2.Config{
 			ClientID:     s.cfg.HerokuClientID,
 			ClientSecret: s.cfg.HerokuClientSecret,
@@ -86,10 +89,11 @@ func (s *Server) Serve() error {
 }
 
 type handlers struct {
-	herokuAPIKey string
-	store        sessions.Store
-	oauthConf    *oauth2.Config
-	logger       log.FieldLogger
+	herokuAPIKey   string
+	whitelistUsers []string
+	store          sessions.Store
+	oauthConf      *oauth2.Config
+	logger         log.FieldLogger
 }
 
 func (h *handlers) HandleHome(w http.ResponseWriter, r *http.Request) {
@@ -247,10 +251,21 @@ func (h *handlers) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), accountKey, acct)
-		r = r.WithContext(ctx)
+		allowed := len(h.whitelistUsers) == 0
+		for _, u := range h.whitelistUsers {
+			if strings.Contains(acct.Email, u) {
+				allowed = true
+				break
+			}
+		}
 
-		next.ServeHTTP(w, r)
+		if allowed {
+			ctx := context.WithValue(r.Context(), accountKey, acct)
+			r = r.WithContext(ctx)
+			next.ServeHTTP(w, r)
+		} else {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		}
 	})
 }
 
