@@ -1,4 +1,26 @@
-FROM heroku/heroku:20-build
+FROM ubuntu:20.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    coreutils \
+    curl \
+    git \
+    iproute2 \
+    iputils-tracepath \
+    less \
+    make \
+    netcat-openbsd \
+    openssh-client \
+    openssh-server \
+    rsync \
+    ruby \
+    tar \
+    telnet \
+    unzip \
+    wget \
+    zip
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN useradd -m -s /usr/bin/bash dyno
 USER dyno

@@ -14,6 +14,9 @@ docker:
 base-image: vscode-ext
 	cd ./base-image && docker build -t jingweno/heroku-editor:20 . && docker push jingweno/heroku-editor:20
 
+run-base-image: vscode-ext
+	cd ./base-image && docker build -t jingweno/heroku-editor:20 . && docker run -ti -p 127.0.0.1:8080:8080 -e PORT=8080 -e GIT_REPO=https://github.com/jingweno/upterm jingweno/heroku-editor:20
+
 .PHONY: vscode-ext
 vscode-ext:
 	cd ./vscode-ext && vsce package -o ../base-image/extensions

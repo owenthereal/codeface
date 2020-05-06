@@ -13,7 +13,7 @@ mkdir -p /home/dyno/project
 echo "Installing Code Server..."
 mkdir $HOME/.heroku/lib/code-server && \
   cd $HOME/.heroku/lib/code-server && \
-  curl -sL https://github.com/cdr/code-server/releases/download/3.1.1/code-server-3.1.1-linux-x86_64.tar.gz | tar -xz --strip-components=1 && \
+  curl -sL https://github.com/cdr/code-server/releases/download/3.2.0/code-server-3.2.0-linux-x86_64.tar.gz | tar -xz --strip-components=1 && \
   ln -s $HOME/.heroku/lib/code-server/code-server $HOME/.heroku/bin/code-server
 
 code-server --install-extension /home/dyno/codeface.vsix && rm -rf /home/dyno/codeface.vsix # clean up

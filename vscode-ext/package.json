@@ -6,7 +6,7 @@
 	"publisher": "jingweno",
 	"repository": "https://github.com/jingwneo/vscode-codeface",
 	"engines": {
-		"vscode": ">=1.43.0"
+		"vscode": ">=1.44.0"
 	},
 	"categories": [
 		"Other"
@@ -33,7 +33,7 @@
 		"test": "node ./out/test/runTest.js"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.43.0",
+		"@types/vscode": "^1.44.0",
 		"@types/glob": "^7.1.1",
 		"@types/mocha": "^7.0.2",
 		"@types/node": "^13.11.0",
