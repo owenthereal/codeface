@@ -51,6 +51,7 @@ func (w *Worker) Start(ctx context.Context) error {
 	work := func() {
 		if err := w.addAppsToPool(ctx); err != nil {
 			w.logger.WithError(err).Info("Fail to add apps to pool")
+			return
 		}
 
 		if err := w.removeOutdatedApps(ctx); err != nil {
