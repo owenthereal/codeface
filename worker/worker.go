@@ -52,6 +52,10 @@ func (w *Worker) Start(ctx context.Context) error {
 		if err := w.addAppsToPool(ctx); err != nil {
 			w.logger.WithError(err).Info("Fail to add apps to pool")
 		}
+
+		if err := w.removeOutdatedApps(ctx); err != nil {
+			w.logger.WithError(err).Info("Fail to remove outdated apps from pool")
+		}
 	}
 
 	t := time.NewTicker(w.cfg.CheckInterval)
@@ -68,22 +72,42 @@ func (w *Worker) Start(ctx context.Context) error {
 	}
 }
 
-func (w *Worker) addAppsToPool(cctx context.Context) error {
-	apps, err := editor.AllIdledApps(cctx, w.heroku)
+func (w *Worker) removeOutdatedApps(ctx context.Context) error {
+	_, otherVersion, err := editor.AllIdledApps(ctx, w.heroku)
 	if err != nil {
 		return err
 	}
 
-	i := w.cfg.PoolSize - len(apps)
+	i := len(otherVersion)
+	n := w.cfg.BatchSize
+	if n > i {
+		n = i
+	}
+
+	w.logger.WithField("num", n).Info("Removing outdated apps from pool")
+	for _, app := range otherVersion[0:n] {
+		editor.DeleteApp(w.heroku, &app, w.logger)
+	}
+
+	return nil
+}
+
+func (w *Worker) addAppsToPool(ctx context.Context) error {
+	currentVersion, _, err := editor.AllIdledApps(ctx, w.heroku)
+	if err != nil {
+		return err
+	}
+
+	i := w.cfg.PoolSize - len(currentVersion)
 	n := w.cfg.BatchSize
 	if n > i {
 		n = i
 	}
 	w.logger.WithField("num", n).Info("Adding apps to pool")
 
-	ctx, cancel := context.WithCancel(cctx)
+	ctx, cancel := context.WithCancel(ctx)
 	var g run.Group
-	for i := 0; i < n; i++ {
+	for j := 0; j < n; j++ {
 		g.Add(func() error {
 			d := editor.NewDeployer(w.cfg.HerokuAPIKey, w.cfg.TemplateDir)
 			_, err := d.DeployEditorAndScaleDown(ctx)

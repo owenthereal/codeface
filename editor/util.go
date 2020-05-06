@@ -12,10 +12,12 @@ import (
 )
 
 var (
-	// cf building app name is in the format of cf-#{ID}-#{VERSION}b
-	cfBuildingAppRegexp = regexp.MustCompile(fmt.Sprintf("cf-(.+)-%sb", dashizedVersion()))
-	// cf idle app name is in the format of cf-#{ID}-#{VERSION}i
-	cfIdleAppRegexp = regexp.MustCompile(fmt.Sprintf("cf-(.+)-%si", dashizedVersion()))
+	// building app name is in the format of cf-#{ID}-#{VERSION}b
+	buildingAppCurrentVersionRegexp = regexp.MustCompile(fmt.Sprintf("cf-(.+)-%sb", dashizedVersion()))
+	// idle app name is in the format of cf-#{ID}-#{VERSION}i
+	idleAppCurrentVersionRegexp = regexp.MustCompile(fmt.Sprintf(`cf-(.+)-%si`, dashizedVersion()))
+	// idle app name is in the format of cf-#{ID}-#{VERSION}i
+	idleAppRegexp = regexp.MustCompile(`cf-(.+)-(\d+)i`)
 )
 
 func buildClaimedAppName(id string) string {
@@ -34,24 +36,24 @@ func dashizedVersion() string {
 	return strings.ReplaceAll(version, ".", "")
 }
 
-func AllIdledApps(ctx context.Context, client *heroku.Service) ([]heroku.App, error) {
-	var result []heroku.App
-
+func AllIdledApps(ctx context.Context, client *heroku.Service) (currentVersion []heroku.App, otherVersion []heroku.App, err error) {
 	apps, err := client.AppListOwnedAndCollaborated(ctx, "~", &heroku.ListRange{
 		Field: "name",
 		Max:   1000, // FIXME: hardcode
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, app := range apps {
-		if cfIdleAppRegexp.MatchString(app.Name) {
-			result = append(result, app)
+		if idleAppCurrentVersionRegexp.MatchString(app.Name) {
+			currentVersion = append(currentVersion, app)
+		} else if idleAppRegexp.MatchString(app.Name) {
+			otherVersion = append(otherVersion, app)
 		}
 	}
 
-	return result, nil
+	return currentVersion, otherVersion, nil
 }
 
 func Account(ctx context.Context, client *heroku.Service) (*heroku.Account, error) {
@@ -67,13 +69,13 @@ func Account(ctx context.Context, client *heroku.Service) (*heroku.Account, erro
 	return acct, nil
 }
 
-func deleteFailedApp(client *heroku.Service, app *heroku.App, logger log.FieldLogger) {
+func DeleteApp(client *heroku.Service, app *heroku.App, logger log.FieldLogger) {
 	logger = logger.WithField("app", app.Name)
 
-	logger.Info("Removing failed app")
+	logger.Info("Removing app")
 	// use a new ctx to make sure it's detached
 	_, err := client.AppDelete(context.Background(), app.Name)
 	if err != nil {
-		logger.WithError(err).Info("Fail to remove failed app")
+		logger.WithError(err).Info("Fail to remove app")
 	}
 }

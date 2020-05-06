@@ -55,7 +55,7 @@ func (t *Claimer) Claim(ctx context.Context, appIdentity, recipient, gitRepo str
 	defer func() {
 		if r := recover(); r != nil {
 			if app != nil {
-				deleteFailedApp(t.heroku, app, t.logger)
+				DeleteApp(t.heroku, app, t.logger)
 			}
 
 			// re-panic
@@ -66,7 +66,7 @@ func (t *Claimer) Claim(ctx context.Context, appIdentity, recipient, gitRepo str
 	// make sure failed app is cleaned up if there is any error
 	defer func() {
 		if err != nil && app != nil {
-			deleteFailedApp(t.heroku, app, t.logger)
+			DeleteApp(t.heroku, app, t.logger)
 		}
 	}()
 
@@ -123,11 +123,12 @@ func (t *Claimer) transferOwnership(ctx context.Context, app *heroku.App, recipi
 }
 
 func (t *Claimer) findOneIdledApp(ctx context.Context) (*heroku.App, error) {
-	apps, err := AllIdledApps(ctx, t.heroku)
+	currentVersion, otherVersion, err := AllIdledApps(ctx, t.heroku)
 	if err != nil {
 		return nil, err
 	}
 
+	apps := append(currentVersion, otherVersion...)
 	if len(apps) == 0 {
 		return nil, fmt.Errorf("error: no qualified app is found in the pool")
 	}
@@ -140,8 +141,8 @@ func (t *Claimer) app(ctx context.Context, appIdentity string) (*heroku.App, err
 }
 
 func (t *Claimer) markAppAsClaimed(ctx context.Context, app *heroku.App) (*heroku.App, error) {
-	if cfIdleAppRegexp.MatchString(app.Name) {
-		cfID := cfIdleAppRegexp.FindStringSubmatch(app.Name)
+	if idleAppRegexp.MatchString(app.Name) {
+		cfID := idleAppRegexp.FindStringSubmatch(app.Name)
 		newIdentity := buildClaimedAppName(cfID[1])
 		newApp, err := t.heroku.AppUpdate(ctx, app.Name, heroku.AppUpdateOpts{
 			Name: &newIdentity,

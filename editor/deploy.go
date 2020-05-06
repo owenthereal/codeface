@@ -21,7 +21,7 @@ import (
 
 var (
 	containerStack = "container"
-	version        = "0.0.1" // TODO load from env var
+	version        = "0.0.2" // TODO load from env var
 )
 
 func NewDeployer(accessToken, templateDir string) *Deployer {
@@ -64,7 +64,7 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 	defer func() {
 		if r := recover(); r != nil {
 			if cfApp != nil {
-				deleteFailedApp(d.heroku, cfApp, d.logger)
+				DeleteApp(d.heroku, cfApp, d.logger)
 			}
 
 			// re-panic
@@ -75,7 +75,7 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 	// make sure failed app is cleaned up if there is any error
 	defer func() {
 		if err != nil && cfApp != nil {
-			deleteFailedApp(d.heroku, cfApp, d.logger)
+			DeleteApp(d.heroku, cfApp, d.logger)
 		}
 	}()
 
@@ -91,8 +91,8 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 }
 
 func (d *Deployer) markAppAsIdled(ctx context.Context, app *heroku.App) (*heroku.App, error) {
-	if cfBuildingAppRegexp.MatchString(app.Name) {
-		cfID := cfBuildingAppRegexp.FindStringSubmatch(app.Name)
+	if buildingAppCurrentVersionRegexp.MatchString(app.Name) {
+		cfID := buildingAppCurrentVersionRegexp.FindStringSubmatch(app.Name)
 		newIdentity := buildIdleAppName(cfID[1])
 		newApp, err := d.heroku.AppUpdate(ctx, app.Name, heroku.AppUpdateOpts{
 			Name: &newIdentity,
