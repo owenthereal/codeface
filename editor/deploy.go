@@ -61,9 +61,12 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 		return nil, err
 	}
 
+	logger := d.logger.WithField("app", cfApp.Name)
+
 	defer func() {
 		if r := recover(); r != nil {
 			if cfApp != nil {
+				logger.Info("Panic deploying app, cleaning up")
 				DeleteApp(d.heroku, cfApp, d.logger)
 			}
 
@@ -75,16 +78,17 @@ func (d *Deployer) DeployEditorAndScaleDown(ctx context.Context) (*heroku.App, e
 	// make sure failed app is cleaned up if there is any error
 	defer func() {
 		if err != nil && cfApp != nil {
+			logger.Info("Error deploying app, cleaning up")
 			DeleteApp(d.heroku, cfApp, d.logger)
 		}
 	}()
 
-	err = d.buildAndScaleDown(ctx, cfApp)
+	err = d.buildAndScaleDown(ctx, cfApp, logger)
 	if err != nil {
 		return cfApp, err
 	}
 
-	d.logger.Infof("Marking app as idled")
+	logger.Infof("Marking app as idled")
 	cfApp, err = d.markAppAsIdled(ctx, cfApp)
 
 	return cfApp, err
@@ -108,9 +112,7 @@ func (d *Deployer) markAppAsIdled(ctx context.Context, app *heroku.App) (*heroku
 	return app, nil
 }
 
-func (d *Deployer) buildAndScaleDown(ctx context.Context, cfApp *heroku.App) error {
-	logger := d.logger.WithField("app", cfApp.Name)
-
+func (d *Deployer) buildAndScaleDown(ctx context.Context, cfApp *heroku.App, logger *log.Entry) error {
 	logger.Infof("Uploading source")
 	src, err := d.uploadSource(ctx, d.templateDir, map[string]string{})
 	if err != nil {

@@ -52,9 +52,12 @@ func (t *Claimer) Claim(ctx context.Context, appIdentity, recipient, gitRepo str
 		}
 	}
 
+	logger.WithField("app", app.Name).Infof("Marking app as claimed")
+
 	defer func() {
 		if r := recover(); r != nil {
 			if app != nil {
+				logger.Info("Panic deploying app, cleaning up")
 				DeleteApp(t.heroku, app, t.logger)
 			}
 
@@ -66,11 +69,11 @@ func (t *Claimer) Claim(ctx context.Context, appIdentity, recipient, gitRepo str
 	// make sure failed app is cleaned up if there is any error
 	defer func() {
 		if err != nil && app != nil {
+			logger.Info("Panic deploying app, cleaning up")
 			DeleteApp(t.heroku, app, t.logger)
 		}
 	}()
 
-	logger.WithField("app", app.Name).Infof("Marking app as claimed")
 	app, err = t.markAppAsClaimed(ctx, app)
 	if err != nil {
 		return app, err
